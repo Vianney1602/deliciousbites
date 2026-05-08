@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,6 +19,8 @@ const RegisterPage = () => {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [googleButtonReady, setGoogleButtonReady] = useState(false);
+  const [googleError, setGoogleError] = useState(null);
 
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -116,7 +118,13 @@ const RegisterPage = () => {
 
       // Redirect after short delay
       setTimeout(() => {
-        navigate('/home');
+        const returnTo = sessionStorage.getItem('returnTo');
+        if (returnTo) {
+          sessionStorage.removeItem('returnTo');
+          navigate(returnTo);
+        } else {
+          navigate('/home');
+        }
       }, 1500);
 
     } catch (err) {
@@ -144,6 +152,139 @@ const RegisterPage = () => {
       setErrors({ ...errors, [field]: '' });
     }
   };
+
+  // Handle Google Login
+  const handleGoogleLogin = async (response) => {
+    try {
+      console.log('=== Google Sign-In Response ===');
+      console.log('✅ Google callback triggered');
+      console.log('Credential received:', response.credential ? 'YES' : 'NO');
+      
+      setLoading(true);
+      
+      // Send token to backend for verification and JWT creation
+      const res = await api.post('/auth/verify-google-token', {
+        token: response.credential
+      });
+
+      if (res.data.token) {
+        console.log('✅ Backend returned JWT token');
+        login(res.data.token, res.data.user);
+        setToast({ message: '🎉 Account created! Redirecting...', type: 'success' });
+        setTimeout(() => {
+          const returnTo = sessionStorage.getItem('returnTo');
+          if (returnTo) {
+            sessionStorage.removeItem('returnTo');
+            navigate(returnTo);
+          } else {
+            navigate('/home');
+          }
+        }, 800);
+      }
+    } catch (error) {
+      console.error('❌ Google signup error:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Google signup failed. Please try again.';
+      console.error('Error details:', { status: error.response?.status, data: error.response?.data });
+      setToast({ message: errorMessage, type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initialize Google Sign-In when component mounts
+  useEffect(() => {
+    let retryCount = 0;
+    const maxRetries = 5;
+
+    const initializeGoogle = async () => {
+      try {
+        console.log(`\n🔄 Google Sign-In Initialization (Attempt ${retryCount + 1}/${maxRetries})`);
+        console.log('window.google available:', !!window.google);
+        console.log('document.getElementById("googleSignInButtonRegister"):', !!document.getElementById('googleSignInButtonRegister'));
+        
+        // Check if Google API is loaded
+        if (!window.google) {
+          console.warn('⏳ Google API not yet loaded, retrying...');
+          retryCount++;
+          if (retryCount < maxRetries) {
+            setTimeout(initializeGoogle, 1000);
+          } else {
+            console.error('❌ Google API failed to load after 5 attempts');
+            setGoogleError('Google Sign-In unavailable');
+          }
+          return;
+        }
+
+        // Fetch the correct Client ID from backend
+        console.log('📡 Fetching Client ID from backend...');
+        const response = await fetch('http://localhost:5000/api/auth/google-client-id');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch Client ID: ${response.status}`);
+        }
+        const data = await response.json();
+        const clientId = data.clientId;
+
+        if (!clientId) {
+          throw new Error('Client ID is empty');
+        }
+
+        console.log('✅ Client ID fetched:', clientId.substring(0, 20) + '...');
+
+        // Initialize Google ID
+        console.log('🔧 Initializing window.google.accounts.id...');
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleLogin,
+          hosted_domain: 'https://localhost:5173',
+          auto_select: false
+        });
+        console.log('✅ window.google.accounts.id initialized');
+
+        // Render button in the container
+        console.log('🎨 Rendering Google Sign-In button...');
+        const buttonElement = document.getElementById('googleSignInButtonRegister');
+        
+        if (!buttonElement) {
+          console.error('❌ Button container not found in DOM');
+          setGoogleError('Button container missing');
+          return;
+        }
+
+        // Clear previous content
+        buttonElement.innerHTML = '';
+
+        window.google.accounts.id.renderButton(
+          buttonElement,
+          {
+            theme: 'outline',
+            size: 'large',
+            width: '100%',
+            text: 'signup_with',
+            logo_alignment: 'left'
+          }
+        );
+
+        console.log('✅ Google button rendered successfully!');
+        setGoogleButtonReady(true);
+        setGoogleError(null);
+
+      } catch (error) {
+        console.error('❌ Google initialization error:', error.message);
+        setGoogleError(error.message);
+        
+        retryCount++;
+        if (retryCount < maxRetries) {
+          console.log(`⏳ Retrying in 1 second...`);
+          setTimeout(initializeGoogle, 1000);
+        }
+      }
+    };
+
+    // Start initialization with a small delay to ensure DOM is ready
+    const timer = setTimeout(initializeGoogle, 100);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <>
@@ -281,6 +422,46 @@ const RegisterPage = () => {
             )}
           </button>
 
+          {/* Google Sign-In Button Container */}
+          <div className="space-y-3">
+            {/* Google SDK Button */}
+            <div 
+              id="googleSignInButtonRegister"
+              className="w-full flex justify-center"
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                width: '100%',
+                minHeight: '48px',
+                borderRadius: '12px',
+                backgroundColor: '#fff',
+                padding: '2px'
+              }}
+            ></div>
+
+            {/* Fallback Manual Google Button (if SDK fails) */}
+            {!googleButtonReady && !googleError && (
+              <button
+                type="button"
+                className="w-full py-3 rounded-2xl font-semibold font-['Poppins',sans-serif] border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-all duration-300 flex items-center justify-center gap-3"
+              >
+                <span style={{ fontSize: '20px' }}>🔵</span>
+                <span>Sign up with Google</span>
+              </button>
+            )}
+
+            {/* Error Message */}
+            {googleError && (
+              <button
+                type="button"
+                className="w-full py-3 rounded-2xl font-semibold font-['Poppins',sans-serif] border-2 border-red-300 text-red-700 hover:bg-red-50 transition-all duration-300"
+              >
+                ⚠️ Google Sign-In Unavailable
+              </button>
+            )}
+          </div>
+
           {/* Divider */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -288,20 +469,22 @@ const RegisterPage = () => {
             </div>
             <div className="relative flex justify-center text-sm">
               <span className="px-4 bg-white text-[#4A2C2A]/50 font-['Poppins',sans-serif]">
-                Already have an account?
+                or
               </span>
             </div>
           </div>
 
           {/* Sign In Link */}
           <div className="text-center">
-            <Link
-              to="/login"
-              className="text-[#F78CA2] hover:text-[#FF6B81] font-semibold font-['Poppins',sans-serif] transition-colors inline-flex items-center gap-1 group"
-            >
-              <span>Sign in instead</span>
-              <span className="group-hover:translate-x-1 transition-transform">→</span>
-            </Link>
+            <p className="text-[#4A2C2A]/70 text-sm font-['Poppins',sans-serif] mb-2">
+              Already have an account?{' '}
+              <Link
+                to="/login"
+                className="text-[#F78CA2] hover:text-[#FF6B81] font-semibold transition-colors"
+              >
+                Sign in
+              </Link>
+            </p>
           </div>
         </form>
       </div>

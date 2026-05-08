@@ -8,62 +8,81 @@ const router = express.Router();
 // USER ONLY: Create an order
 router.post('/', verifyToken, verifyUser, async (req, res) => {
   try {
-    const { items } = req.body;
+    console.log('');
+    console.log('╔════════════════════════════════════════╗');
+    console.log('║     ORDER CREATION REQUEST RECEIVED    ║');
+    console.log('╚════════════════════════════════════════╝');
+    console.log('Authenticated user:', {
+      id: req.user?.id,
+      email: req.user?.email,
+      role: req.user?.role
+    });
+    console.log('Request headers:', req.headers);
+    console.log('Request body:', req.body);
+    console.log('');
+    
+    const { items, deliveryDetails, totalAmount, paymentMethod, paymentStatus } = req.body;
+    
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Order items are required' });
     }
 
-    const productIds = items.map((i) => i.productId);
-    if (productIds.some((id) => Number.isNaN(parseInt(id, 10)))) {
-      return res.status(400).json({ message: 'Invalid product id in items' });
+    if (!deliveryDetails || !deliveryDetails.name || !deliveryDetails.email) {
+      return res.status(400).json({ message: 'Delivery details are required' });
     }
 
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds.map((id) => parseInt(id, 10)) }, availability: true }
-    });
-
-    if (products.length !== items.length) {
-      return res
-        .status(400)
-        .json({ message: 'One or more products are invalid or out of stock' });
-    }
-
-    const productMap = new Map(products.map((p) => [p.id, p]));
-
-    let totalAmount = 0;
-    const orderItems = items.map((item) => {
-      const productId = parseInt(item.productId, 10);
-      const product = productMap.get(productId);
-      const quantity = item.quantity || 1;
-      const price = product.price;
-      totalAmount += price * quantity;
+    // Format items for storage - handle nested product structure from CartContext
+    const formattedItems = items.map((item) => {
+      // Handle both { product, quantity } and { id, name, price, quantity } formats
+      const productData = item.product || item;
       return {
-        productId,
-        quantity,
-        price
+        productId: productData.id,
+        productName: productData.name,
+        price: productData.price,
+        quantity: item.quantity || 1,
+        specialRequests: item.specialRequests || ''
       };
     });
 
+    // Create order record
     const order = await prisma.order.create({
       data: {
         userId: req.user.id,
-        totalAmount,
-        items: {
-          create: orderItems
-        }
-      },
-      include: {
-        items: true
+        items: JSON.stringify(formattedItems),
+        totalAmount: totalAmount || 0,
+        paymentMethod: paymentMethod || 'cod',
+        paymentStatus: paymentStatus || 'pending',
+        deliveryDetails: JSON.stringify(deliveryDetails),
+        status: 'pending'
+      }
+    });
+
+    // Create timeline entry
+    await prisma.orderTimeline.create({
+      data: {
+        orderId: order.id,
+        status: 'pending',
+        message: 'Order placed successfully'
       }
     });
 
     // Broadcast new order to admin clients
     broadcast('orders-changed', { orderId: order.id, action: 'created' });
 
-    res.status(201).json(order);
+    res.status(201).json({
+      id: order.id,
+      orderId: order.orderId,
+      userId: order.userId,
+      items: formattedItems,
+      totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      status: order.status,
+      createdAt: order.createdAt
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Order creation error:', err);
+    res.status(500).json({ message: 'Failed to create order', error: err.message });
   }
 });
 
@@ -73,9 +92,20 @@ router.get('/my-orders', verifyToken, verifyUser, async (req, res) => {
     const orders = await prisma.order.findMany({
       where: { userId: req.user.id },
       orderBy: { createdAt: 'desc' },
-      include: { items: true }
+      include: { 
+        address: true,
+        payment: true,
+        timeline: true
+      }
     });
-    res.json(orders);
+    
+    // Parse items JSON for each order
+    const formattedOrders = orders.map(order => ({
+      ...order,
+      items: JSON.parse(order.items)
+    }));
+    
+    res.json(formattedOrders);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });

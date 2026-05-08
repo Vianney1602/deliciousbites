@@ -18,19 +18,25 @@ router.get('/stats', async (_req, res) => {
       await Promise.all([
         prisma.order.count(),
         prisma.order.aggregate({ _sum: { totalAmount: true } }),
-        prisma.product.count({ where: { availability: true } }),
-        prisma.product.count(),
+        prisma.menuItem.count({ where: { availability: true } }),
+        prisma.menuItem.count(),
         prisma.user.count({ where: { role: 'user' } }),
-        prisma.order.count({ where: { status: 'Pending' } }),
+        prisma.order.count({ where: { status: 'pending' } }),
         prisma.order.findMany({
           orderBy: { createdAt: 'desc' },
           take: 10,
           include: {
             user: { select: { id: true, name: true, email: true } },
-            items: { include: { order: false } }
+            address: true
           }
         })
       ]);
+
+    // Parse items JSON for each order
+    const formattedRecentOrders = recentOrders.map(order => ({
+      ...order,
+      items: JSON.parse(order.items)
+    }));
 
     res.json({
       totalOrders,
@@ -39,7 +45,7 @@ router.get('/stats', async (_req, res) => {
       totalItems,
       customers,
       pendingOrders,
-      recentOrders
+      recentOrders: formattedRecentOrders
     });
   } catch (err) {
     console.error('Stats error:', err);
@@ -69,38 +75,69 @@ router.get('/customers', async (req, res) => {
   }
 });
 
-// ─── Image Upload ────────────────────────────────────────
-router.post('/upload-image', upload.single('image'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: 'No image file provided' });
-  }
+const cloudinary = require('../config/cloudinary');
+const streamifier = require('streamifier');
 
-  const imageUrl = `/uploads/${req.file.filename}`;
-  res.json({ imageUrl });
+// ─── Image Upload ────────────────────────────────────────
+router.post('/upload-image', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No image file provided' });
+    }
+
+    console.log('--- Starting Cloudinary Upload ---');
+    console.log('Secret starts with:', process.env.CLOUDINARY_API_SECRET?.substring(0, 5) + '...');
+
+    const streamUpload = (req) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'menu_items',
+          },
+          (error, result) => {
+            if (result) {
+              resolve(result);
+            } else {
+              reject(error);
+            }
+          }
+        );
+        streamifier.createReadStream(req.file.buffer).pipe(stream);
+      });
+    };
+
+    const result = await streamUpload(req);
+    console.log('✅ Cloudinary Upload Success:', result.secure_url);
+    res.json({ imageUrl: result.secure_url });
+
+  } catch (err) {
+    console.error('Cloudinary upload error details:', err);
+    res.status(500).json({ message: 'Failed to upload image to cloud storage', error: err.message });
+  }
 });
 
 // ─── Delete uploaded image ───────────────────────────────
-router.delete('/delete-image', (req, res) => {
-  const { imageUrl } = req.body;
-  if (!imageUrl || !imageUrl.startsWith('/uploads/')) {
-    return res.status(400).json({ message: 'Invalid image URL' });
-  }
-
-  const filename = path.basename(imageUrl);
-  // Validate filename to prevent directory traversal
-  if (filename.includes('..') || filename.includes(path.sep)) {
-    return res.status(400).json({ message: 'Invalid filename' });
-  }
-
-  const filePath = path.join(__dirname, '..', '..', 'uploads', filename);
-
-  fs.unlink(filePath, (err) => {
-    if (err && err.code !== 'ENOENT') {
-      console.error('Delete image error:', err);
-      return res.status(500).json({ message: 'Failed to delete image' });
+router.delete('/delete-image', async (req, res) => {
+  try {
+    const { imageUrl } = req.body;
+    if (!imageUrl) {
+      return res.status(400).json({ message: 'No image URL provided' });
     }
+
+    // Extract public ID from Cloudinary URL
+    // URL format: https://res.cloudinary.com/cloudname/image/upload/v12345/folder/id.jpg
+    const parts = imageUrl.split('/');
+    const filenameWithExt = parts[parts.length - 1];
+    const publicIdWithoutExt = filenameWithExt.split('.')[0];
+    const folder = parts[parts.length - 2];
+    const publicId = `${folder}/${publicIdWithoutExt}`;
+
+    await cloudinary.uploader.destroy(publicId);
     res.json({ message: 'Image deleted' });
-  });
+  } catch (err) {
+    console.error('Cloudinary delete error:', err);
+    res.status(500).json({ message: 'Failed to delete image from cloud storage' });
+  }
 });
 
 module.exports = router;

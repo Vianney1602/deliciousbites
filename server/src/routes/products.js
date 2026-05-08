@@ -5,7 +5,7 @@ const { broadcast } = require('../ws/broadcast');
 
 const router = express.Router();
 
-// PUBLIC / USER: Get all products (optionally filter by category or availability)
+// PUBLIC / USER: Get all menu items (optionally filter by category or availability)
 router.get('/', async (req, res) => {
   try {
     const { category, available } = req.query;
@@ -17,78 +17,82 @@ router.get('/', async (req, res) => {
       where.availability = true;
     }
 
-    const products = await prisma.product.findMany({
+    const menuItems = await prisma.menuItem.findMany({
       where,
       orderBy: { createdAt: 'asc' }
     });
-    res.json(products);
+    res.json(menuItems);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// PUBLIC / USER: Get single product by id
+// PUBLIC / USER: Get single menu item by id
 router.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
-      return res.status(400).json({ message: 'Invalid product id' });
+      return res.status(400).json({ message: 'Invalid item id' });
     }
 
-    const product = await prisma.product.findUnique({ where: { id } });
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
+    const item = await prisma.menuItem.findUnique({ where: { id } });
+    if (!item) {
+      return res.status(404).json({ message: 'Menu item not found' });
     }
-    res.json(product);
+    res.json(item);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// ADMIN ONLY: Add product
+// ADMIN ONLY: Add menu item
 router.post('/', verifyToken, verifyAdmin, async (req, res) => {
   try {
-    const { name, category, description, price, availability, imageUrl } = req.body;
+    const { name, category, description, price, availability, imageUrl, preparationTime, allergens, isVegan, isGlutenFree } = req.body;
     if (!name || !category || typeof price !== 'number') {
       return res
         .status(400)
         .json({ message: 'Name, category and numeric price are required' });
     }
 
-    const product = await prisma.product.create({
+    const item = await prisma.menuItem.create({
       data: {
         name,
         category,
         description: description || '',
         price,
         availability: availability !== undefined ? availability : true,
-        imageUrl: imageUrl || null
+        imageUrl: imageUrl || null,
+        preparationTime: preparationTime || 15,
+        allergens: allergens || null,
+        isVegan: isVegan || false,
+        isGlutenFree: isGlutenFree || false
       }
     });
 
-    broadcast('products-changed', { productId: product.id, action: 'created' });
+    broadcast('products-changed', { productId: item.id, action: 'created' });
 
-    res.status(201).json(product);
+    res.status(201).json(item);
   } catch (err) {
     console.error(err);
     if (err.code === 'P2002') {
-      return res.status(400).json({ message: 'Product with this name and category exists' });
+      return res.status(400).json({ message: 'Menu item with this name and category exists' });
     }
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// ADMIN ONLY: Edit product
+// ADMIN ONLY: Edit menu item
 router.put('/:id', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
-      return res.status(400).json({ message: 'Invalid product id' });
+      return res.status(400).json({ message: 'Invalid item id' });
     }
 
-    const { name, category, description, price, availability, imageUrl } = req.body;
+    const { name, category, description, price, availability, imageUrl, preparationTime, allergens, isVegan, isGlutenFree } = req.body;
 
     const data = {};
     if (name !== undefined) data.name = name;
@@ -97,17 +101,21 @@ router.put('/:id', verifyToken, verifyAdmin, async (req, res) => {
     if (price !== undefined) data.price = price;
     if (availability !== undefined) data.availability = availability;
     if (imageUrl !== undefined) data.imageUrl = imageUrl;
+    if (preparationTime !== undefined) data.preparationTime = preparationTime;
+    if (allergens !== undefined) data.allergens = allergens;
+    if (isVegan !== undefined) data.isVegan = isVegan;
+    if (isGlutenFree !== undefined) data.isGlutenFree = isGlutenFree;
 
     try {
-      const product = await prisma.product.update({
+      const item = await prisma.menuItem.update({
         where: { id },
         data
       });
       broadcast('products-changed', { productId: id, action: 'updated' });
-      res.json(product);
+      res.json(item);
     } catch (err) {
       if (err.code === 'P2025') {
-        return res.status(404).json({ message: 'Product not found' });
+        return res.status(404).json({ message: 'Menu item not found' });
       }
       throw err;
     }
@@ -117,21 +125,21 @@ router.put('/:id', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// ADMIN ONLY: Delete product
+// ADMIN ONLY: Delete menu item
 router.delete('/:id', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
-      return res.status(400).json({ message: 'Invalid product id' });
+      return res.status(400).json({ message: 'Invalid item id' });
     }
 
     try {
-      await prisma.product.delete({ where: { id } });
+      await prisma.menuItem.delete({ where: { id } });
       broadcast('products-changed', { productId: id, action: 'deleted' });
-      res.json({ message: 'Product deleted' });
+      res.json({ message: 'Menu item deleted' });
     } catch (err) {
       if (err.code === 'P2025') {
-        return res.status(404).json({ message: 'Product not found' });
+        return res.status(404).json({ message: 'Menu item not found' });
       }
       throw err;
     }
@@ -146,7 +154,7 @@ router.patch('/:id/availability', verifyToken, verifyAdmin, async (req, res) => 
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
-      return res.status(400).json({ message: 'Invalid product id' });
+      return res.status(400).json({ message: 'Invalid item id' });
     }
 
     const { availability } = req.body;
@@ -155,15 +163,15 @@ router.patch('/:id/availability', verifyToken, verifyAdmin, async (req, res) => 
     }
 
     try {
-      const product = await prisma.product.update({
+      const item = await prisma.menuItem.update({
         where: { id },
         data: { availability }
       });
       broadcast('products-changed', { productId: id, action: 'availability' });
-      res.json(product);
+      res.json(item);
     } catch (err) {
       if (err.code === 'P2025') {
-        return res.status(404).json({ message: 'Product not found' });
+        return res.status(404).json({ message: 'Menu item not found' });
       }
       throw err;
     }

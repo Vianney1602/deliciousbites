@@ -3,52 +3,209 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
+// User model - stores authentication and role information
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  password  String
-  role      String   @default("user")
-  createdAt DateTime @default(now())
+  id                  Int       @id @default(autoincrement())
+  email               String    @unique
+  password            String
+  name                String
+  phone               String?
+  role                String    @default("user") // user, admin
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  orders    Order[]
+  // Relations
+  profile             CustomerProfile?
+  addresses           Address[]
+  orders              Order[]
+  payments            Payment[]
+  feedbackItems       Feedback[]
 }
 
-model Product {
-  id           Int      @id @default(autoincrement())
-  name         String
-  category     String
-  description  String?
-  price        Float
-  availability Boolean  @default(true)
-  imageUrl     String?
-  createdAt    DateTime @default(now())
+// Customer Profile - detailed customer information
+model CustomerProfile {
+  id                  Int       @id @default(autoincrement())
+  userId              Int       @unique
+  dateOfBirth         DateTime?
+  gender              String?   // Male, Female, Other
+  preferences         String?   // JSON string for dietary preferences
+  loyaltyPoints       Int       @default(0)
+  totalOrdersCount    Int       @default(0)
+  totalSpent          Float     @default(0)
+  lastOrderDate       DateTime?
+  isVerified          Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Address model - delivery addresses for customers
+model Address {
+  id                  Int       @id @default(autoincrement())
+  userId              Int
+  type                String    // home, office, other
+  street              String
+  city                String
+  state               String
+  postalCode          String
+  country             String
+  latitude            Float?
+  longitude           Float?
+  isDefault           Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders              Order[]
+
+  @@index([userId])
+}
+
+// Menu Item - comprehensive product/menu model
+model MenuItem {
+  id                  Int       @id @default(autoincrement())
+  name                String
+  description         String?
+  category            String    // Cakes, Pastries, Bread, Cookies, etc.
+  subcategory         String?   // More specific categorization
+  price               Float
+  originalPrice       Float?    // For displaying discounts
+  discount            Float     @default(0) // Discount percentage
+  imageUrl            String?
+  imageAlt            String?
+  preparationTime     Int       @default(15) // in minutes
+  servingSize         String?   // e.g., "Serves 2", "Individual"
+  ingredients         String?   // JSON string or comma-separated
+  allergens           String?   // JSON string of allergen warnings
+  nutritionInfo       String?   // JSON string with nutrition details
+  availability        Boolean   @default(true)
+  isVegan             Boolean   @default(false)
+  isGlutenFree        Boolean   @default(false)
+  isOrganic           Boolean   @default(false)
+  rating              Float     @default(0)
+  reviewCount         Int       @default(0)
+  tags                String?   // JSON array of tags
+  isSpecial           Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  reviews             MenuItemReview[]
 
   @@unique([name, category])
+  @@index([category])
+  @@index([availability])
 }
 
+// Menu Item Review - customer reviews and ratings
+model MenuItemReview {
+  id                  Int       @id @default(autoincrement())
+  menuItemId          Int
+  rating              Int       // 1-5 stars
+  title               String?
+  comment             String?
+  createdAt           DateTime  @default(now())
+
+  menuItem            MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@index([menuItemId])
+}
+
+// Order model - comprehensive order tracking
 model Order {
-  id          Int         @id @default(autoincrement())
-  userId      Int
-  totalAmount Float
-  status      String      @default("Pending")
-  createdAt   DateTime    @default(now())
+  id                  Int       @id @default(autoincrement())
+  orderId             String    @unique @default(uuid()) // Unique order ID
+  userId              Int
+  addressId           Int?
+  status              String    @default("pending") // pending, confirmed, preparing, ready, out-for-delivery, delivered, cancelled
+  totalAmount         Float
+  taxAmount           Float     @default(0)
+  deliveryFee         Float     @default(0)
+  discount            Float     @default(0)
+  paymentStatus       String    @default("pending") // pending, completed, failed, refunded
+  paymentMethod       String?   // card, upi, wallet, cash
+  items               String    // JSON array of {menuItemId, quantity, priceAtPurchase, specialRequests}
+  deliveryDetails     String?   // JSON object with name, email, phone, address, city, pincode
+  estimatedDelivery   DateTime?
+  actualDelivery      DateTime?
+  specialInstructions String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  user        User        @relation(fields: [userId], references: [id])
-  items       OrderItem[]
+  // Relations
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address             Address?  @relation(fields: [addressId], references: [id])
+  payment             Payment?
+  timeline            OrderTimeline[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
 
-model OrderItem {
-  id        Int    @id @default(autoincrement())
-  orderId   Int
-  productId Int
-  quantity  Int
-  price     Float
+// Payment model - payment transaction tracking
+model Payment {
+  id                  Int       @id @default(autoincrement())
+  transactionId       String    @unique // Payment gateway transaction ID
+  orderId             Int       @unique
+  userId              Int
+  amount              Float
+  currency            String    @default("USD")
+  paymentMethod       String    // card, upi, wallet, netbanking, cash
+  paymentGateway      String?   // stripe, razorpay, paypal, etc.
+  cardLastFour        String?   // Last 4 digits if card payment
+  status              String    @default("pending") // pending, completed, failed, refunded
+  refundAmount        Float     @default(0)
+  failureReason       String?
+  receiptUrl          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  order     Order @relation(fields: [orderId], references: [id])
+  order               Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
+
+// Order Timeline - track order status changes
+model OrderTimeline {
+  id                  Int       @id @default(autoincrement())
+  orderId             Int
+  status              String
+  message             String?
+  timestamp           DateTime  @default(now())
+
+  order               Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+// Feedback model - customer feedback and ratings
+model Feedback {
+  id                  Int       @id @default(autoincrement())
+  userId              Int?
+  orderId             Int?
+  name                String
+  email               String
+  rating              Int       // 1-5 stars
+  message             String
+  approved            Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+
+  user                User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([approved])
+  @@index([createdAt])
+}
+
 

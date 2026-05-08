@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,13 +12,15 @@ const CartPage = () => {
   const deliveryFee = items.length > 0 ? 50 : 0;
   const grandTotal = total + deliveryFee;
 
-  const handleCheckout = () => {
+  const handleCheckout = useCallback(() => {
     if (!user) {
-      navigate('/login');
+      // Store the intended destination in sessionStorage
+      sessionStorage.setItem('returnTo', '/checkout');
+      navigate('/login', { replace: false });
       return;
     }
-    navigate('/checkout');
-  };
+    navigate('/checkout', { replace: false });
+  }, [user, navigate]);
 
   if (items.length === 0) {
     return (

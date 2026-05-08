@@ -140,7 +140,7 @@ async function seedMenu() {
   ];
 
   for (const p of products) {
-    await prisma.product.upsert({
+    await prisma.menuItem.upsert({
       where: {
         name_category: {
           name: p.name,

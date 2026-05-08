@@ -2,8 +2,13 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../prisma');
+const passport = require('passport');
+const { OAuth2Client } = require('google-auth-library');
 
 const router = express.Router();
+
+// Initialize Google OAuth client
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const createToken = (user) => {
   return jwt.sign(
@@ -100,6 +105,131 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ─── Google OAuth Routes ─────────────────────────────────
+// Redirect to Google login
+router.get('/google', 
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+// Google callback
+router.get('/google/callback',
+  passport.authenticate('google', { failureRedirect: `${process.env.FRONTEND_URL}/login` }),
+  async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+      }
+
+      // Create JWT token for the user
+      const token = createToken(req.user);
+
+      // Redirect to frontend OAuth callback handler with token and user info
+      res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}&email=${encodeURIComponent(req.user.email)}&name=${encodeURIComponent(req.user.name)}`);
+    } catch (err) {
+      console.error('Google callback error:', err);
+      res.redirect(`${process.env.FRONTEND_URL}/login?error=server_error`);
+    }
+  }
+);
+
+// Get current authenticated user
+router.get('/me', (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+
+  res.json({
+    id: req.user.id,
+    name: req.user.name,
+    email: req.user.email,
+    role: req.user.role
+  });
+});
+
+// Get Google Client ID for frontend
+router.get('/google-client-id', (req, res) => {
+  res.json({
+    clientId: process.env.GOOGLE_CLIENT_ID
+  });
+});
+
+// Verify Google Sign-In Token (Frontend Google Sign-In)
+router.post('/verify-google-token', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ message: 'Token is required' });
+    }
+
+    console.log('Verifying Google token...');
+    console.log('Client ID:', process.env.GOOGLE_CLIENT_ID);
+
+    // Verify the token using Google's official library
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+    console.log('Token verified. Email:', payload.email);
+
+    // Extract user info from token
+    const { email, name, picture } = payload;
+
+    if (!email) {
+      return res.status(401).json({ message: 'Email not found in token' });
+    }
+
+    // Find or create user
+    let user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (!user) {
+      console.log('Creating new user:', email);
+      // Create new user from Google profile
+      user = await prisma.user.create({
+        data: {
+          email,
+          name: name || email.split('@')[0],
+          password: await bcrypt.hash(Math.random().toString(), 10), // Random password for OAuth users
+          role: 'user',
+          isActive: true,
+          phone: null
+        }
+      });
+
+      // Create customer profile
+      await prisma.customerProfile.create({
+        data: {
+          userId: user.id,
+          isVerified: true
+        }
+      });
+    } else {
+      console.log('User already exists:', email);
+    }
+
+    // Create JWT token
+    const jwtToken = createToken(user);
+
+    res.json({ 
+      token: jwtToken, 
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Google token verification error:', error.message);
+    console.error('Error stack:', error.stack);
+    res.status(401).json({ message: 'Token verification failed: ' + error.message });
   }
 });
 

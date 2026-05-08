@@ -2,13 +2,20 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
+
+// Load env vars BEFORE any module that reads process.env
+dotenv.config();
+
 const http = require('http');
 const path = require('path');
+const passport = require('passport');
+const session = require('express-session');
 const ensureDefaultAdmin = require('./seed/ensureDefaultAdmin');
 const seedMenu = require('./seed/menuSeed');
 const { attachWebSocketServer } = require('./ws/broadcast');
 
-dotenv.config();
+// Initialize Google Auth config (after dotenv so env vars are available)
+require('./config/googleAuth');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,9 +23,27 @@ const server = http.createServer(app);
 // Attach WebSocket server to the same HTTP server
 attachWebSocketServer(server);
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json());
 app.use(morgan('dev'));
+
+// Configure session middleware (required for Passport)
+app.use(session({
+  secret: process.env.JWT_SECRET || 'your-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { 
+    secure: false, // Set to true in production with HTTPS
+    maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
+  }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Serve uploaded images as static files
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
@@ -39,6 +64,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
+app.use('/api/payments', require('./routes/payments'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin/orders', require('./routes/adminOrders'));
 app.use('/api/admin/dashboard', require('./routes/adminDashboard'));

@@ -11,17 +11,27 @@ router.get('/', verifyToken, verifyAdmin, async (req, res) => {
     const orders = await prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
-        items: true,
         user: {
           select: {
             id: true,
             name: true,
-            email: true
+            email: true,
+            phone: true
           }
-        }
+        },
+        address: true,
+        payment: true,
+        timeline: true
       }
     });
-    res.json(orders);
+    
+    // Parse items JSON for each order
+    const formattedOrders = orders.map(order => ({
+      ...order,
+      items: JSON.parse(order.items)
+    }));
+    
+    res.json(formattedOrders);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -44,23 +54,40 @@ router.patch('/:id/status', verifyToken, verifyAdmin, async (req, res) => {
     try {
       const order = await prisma.order.update({
         where: { id },
-        data: { status },
+        data: { status, updatedAt: new Date() },
         include: {
-          items: true,
           user: {
             select: {
               id: true,
               name: true,
-              email: true
+              email: true,
+              phone: true
             }
-          }
+          },
+          address: true,
+          payment: true,
+          timeline: true
+        }
+      });
+
+      // Create timeline entry for status change
+      await prisma.orderTimeline.create({
+        data: {
+          orderId: id,
+          status,
+          message: `Order status updated to ${status}`
         }
       });
 
       // Broadcast order status change to all clients
       broadcast('orders-changed', { orderId: id, status });
 
-      res.json(order);
+      const formattedOrder = {
+        ...order,
+        items: JSON.parse(order.items)
+      };
+
+      res.json(formattedOrder);
     } catch (err) {
       if (err.code === 'P2025') {
         return res.status(404).json({ message: 'Order not found' });

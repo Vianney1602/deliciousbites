@@ -18,6 +18,7 @@ import AdminEditProductPage from './pages/AdminEditProductPage';
 import AdminCustomersPage from './pages/AdminCustomersPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import AdminWelcomePage from './pages/AdminWelcomePage';
 import AdminSetupPage from './pages/AdminSetupPage';
@@ -41,7 +42,7 @@ const AppRoutes = () => {
   const [showLoader, setShowLoader] = useState(true);
   const [pageReady, setPageReady] = useState(false);
 
-  const hideLayout = ['/', '/login', '/register', '/admin/login', '/admin/setup', '/payment-success'].includes(location.pathname) || location.pathname.startsWith('/admin/');
+  const hideLayout = ['/', '/login', '/register', '/auth/callback', '/admin/login', '/admin/setup', '/payment-success'].includes(location.pathname) || location.pathname.startsWith('/admin/');
 
   const handleLoaderComplete = useCallback(() => {
     setShowLoader(false);
@@ -81,11 +82,12 @@ const AppRoutes = () => {
         <Route path="/account" element={<AccountPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/auth/callback" element={<OAuthCallbackPage />} />
         <Route path="/admin" element={<AdminWelcomePage />} />
         <Route path="/admin/setup" element={<AdminSetupPage />} />
         <Route path="/admin/login" element={<AdminLoginPage />} />
-        <Route path="/checkout" element={<UserGuard element={<CheckoutPage />} />} />
-        <Route path="/payment" element={<UserGuard element={<PaymentPage />} />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/payment" element={<PaymentPage />} />
         <Route path="/payment-success" element={<PaymentSuccessPage />} />
         <Route path="/track-order/:orderId" element={<TrackOrderPage />} />
         <Route path="/orders" element={<UserGuard element={<UserOrdersPage />} />} />

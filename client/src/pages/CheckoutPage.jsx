@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import CartItem from '../components/CartItem';
@@ -10,8 +10,29 @@ const CheckoutPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  // Redirect to login if not authenticated
+  React.useEffect(() => {
+    if (!user) {
+      sessionStorage.setItem('returnTo', '/checkout');
+      navigate('/login', { replace: true });
+    }
+  }, [user, navigate]);
+
+  // Redirect to cart if no items
+  React.useEffect(() => {
+    if (items.length === 0 && user) {
+      navigate('/cart', { replace: true });
+    }
+  }, [items.length, user, navigate]);
+
+  // If not authenticated or no items, don't render form yet
+  if (!user || items.length === 0) {
+    return null;
+  }
+
   const [deliveryDetails, setDeliveryDetails] = useState({
     name: user?.name || '',
+    email: user?.email || '',
     phone: '',
     address: '',
     city: '',
@@ -28,6 +49,12 @@ const CheckoutPage = () => {
 
     if (!deliveryDetails.name.trim()) {
       newErrors.name = 'Full name is required';
+    }
+
+    if (!deliveryDetails.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[\w\.-]+@[\w\.-]+\.\w+$/.test(deliveryDetails.email)) {
+      newErrors.email = 'Please enter a valid email';
     }
 
     if (!deliveryDetails.phone.trim()) {
@@ -62,52 +89,40 @@ const CheckoutPage = () => {
   };
 
   const handlePlaceOrder = () => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
-
+    console.log('=== Place Order Button Clicked ===');
+    console.log('Items in cart:', items.length, items);
+    console.log('Delivery details:', deliveryDetails);
+    console.log('Payment method:', paymentMethod);
+    
     if (items.length === 0) {
+      console.log('❌ No items in cart, cannot place order');
       navigate('/cart');
       return;
     }
 
     if (!validateForm()) {
+      console.log('❌ Form validation failed');
+      console.log('Errors:', errors);
       return;
     }
 
+    console.log('✅ Form validated successfully');
+    const stateToPass = { 
+      deliveryDetails: { ...deliveryDetails, paymentMethod }
+    };
+    console.log('Navigating to /payment with state:', stateToPass);
+    
+    // Store in sessionStorage as backup
+    sessionStorage.setItem('checkoutData', JSON.stringify(stateToPass));
+    console.log('Stored in sessionStorage');
+
     // Navigate to payment page with delivery details
     navigate('/payment', { 
-      state: { 
-        deliveryDetails: { ...deliveryDetails, paymentMethod }
-      } 
+      state: stateToPass,
+      replace: false
     });
+    console.log('Navigation call completed');
   };
-
-  if (items.length === 0) {
-    return (
-      <main className="min-h-[70vh] flex items-center justify-center px-4">
-        <div className="text-center space-y-6 max-w-md animate-scaleIn">
-          <div className="text-8xl mb-4 animate-subtleFloat">🛒</div>
-          <h1 className="text-3xl font-bold text-[#4A2C2A] font-['Pacifico',cursive]">
-            Your Cart is Empty
-          </h1>
-          <Link 
-            to="/cart"
-            className="
-              inline-block px-8 py-4 rounded-2xl font-semibold font-['Poppins',sans-serif]
-              bg-gradient-to-r from-[#F78CA2] to-[#FF6B81]
-              text-white shadow-lg shadow-[#F78CA2]/30
-              hover:shadow-xl hover:shadow-[#F78CA2]/40 hover:scale-[1.02]
-              transition-all duration-300
-            "
-          >
-            Go to Cart
-          </Link>
-        </div>
-      </main>
-    );
-  }
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-8 md:py-12 page-enter">
@@ -166,6 +181,16 @@ const CheckoutPage = () => {
                 onChange={handleChange('name')}
                 error={errors.name}
                 icon="👤"
+                required
+              />
+
+              <InputField
+                label="Email Address"
+                type="email"
+                value={deliveryDetails.email}
+                onChange={handleChange('email')}
+                error={errors.email}
+                icon="📧"
                 required
               />
 
