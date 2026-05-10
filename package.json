@@ -1,0 +1,10 @@
+{
+  "name": "delicious-bites",
+  "version": "1.0.0",
+  "description": "Delicious Bites root project",
+  "private": true,
+  "scripts": {
+    "install": "cd client && npm install",
+    "build": "cd client && npm run build"
+  }
+}
