@@ -6,6 +6,14 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
+  // Fix Axios dropping paths from baseURL when url starts with /
+  if (config.url && config.url.startsWith('/')) {
+    config.url = config.url.substring(1);
+  }
+  if (config.baseURL && !config.baseURL.endsWith('/')) {
+    config.baseURL += '/';
+  }
+
   const token = localStorage.getItem('token');
   console.log('=== Axios Interceptor ===');
   console.log('Token from localStorage:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
