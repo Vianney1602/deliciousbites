@@ -24,7 +24,22 @@ const server = http.createServer(app);
 attachWebSocketServer(server);
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow specific origins
+    if (
+      origin.includes('localhost') || 
+      origin.includes('.vercel.app') || 
+      origin === process.env.FRONTEND_URL ||
+      (process.env.FRONTEND_URL && origin.startsWith(process.env.FRONTEND_URL))
+    ) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 app.use(express.json());
