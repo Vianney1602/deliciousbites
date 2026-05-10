@@ -62,6 +62,16 @@ app.get('/', (req, res) => {
   res.json({ message: 'Delicious Bites API is running' });
 });
 
+// Health check endpoint
+app.get('/api', (req, res) => {
+  res.json({ 
+    status: 'ok',
+    message: 'Delicious Bites Backend API',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
