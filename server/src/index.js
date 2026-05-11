@@ -51,13 +51,8 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Disable caching for API responses to prevent 304 Not Modified issues
-app.use('/api', (req, res, next) => {
-  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  next();
-});
+// Disable ETag to prevent 304 Not Modified responses
+app.disable('etag');
 
 // Serve uploaded images as static files
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));

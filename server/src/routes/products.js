@@ -21,10 +21,6 @@ router.get('/', async (req, res) => {
       where,
       orderBy: { createdAt: 'asc' }
     });
-    // Disable caching to prevent 304 responses
-    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
     res.json(menuItems);
   } catch (err) {
     console.error(err);
@@ -44,10 +40,6 @@ router.get('/:id', async (req, res) => {
     if (!item) {
       return res.status(404).json({ message: 'Menu item not found' });
     }
-    // Disable caching to prevent 304 responses
-    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
     res.json(item);
   } catch (err) {
     console.error(err);
