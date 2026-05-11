@@ -24,36 +24,8 @@ const server = http.createServer(app);
 attachWebSocketServer(server);
 
 app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    // Allowed origins
-    const allowedOrigins = [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:5000',
-      'https://delicious-bites-tau.vercel.app',
-      process.env.FRONTEND_URL
-    ].filter(Boolean);
-    
-    // Log for debugging
-    console.log('Request origin:', origin);
-    console.log('Allowed origins:', allowedOrigins);
-    
-    // Allow specific origins or .vercel.app domains
-    if (
-      origin.includes('localhost') || 
-      origin.includes('.vercel.app') || 
-      allowedOrigins.includes(origin)
-    ) {
-      callback(null, true);
-    } else {
-      console.error('CORS rejected origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
+  origin: '*', // Temporarily allow all origins to test
+  credentials: false
 }));
 app.use(express.json());
 app.use(morgan('dev'));
