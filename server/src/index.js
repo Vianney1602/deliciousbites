@@ -25,15 +25,32 @@ attachWebSocketServer(server);
 
 app.use(cors({
   origin: function(origin, callback) {
-    // Always allow - for testing
-    callback(null, true);
+    // Allowed origins
+    const allowedOrigins = [
+      'https://delicious-bites-tau.vercel.app',
+      'https://delicious-bites-git-main-vianney-infant-rajs-projects.vercel.app',
+      'http://localhost:5173',
+      'http://localhost:3000'
+    ];
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed'));
+    }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
-app.use(morgan('dev'));
+
+// Configure morgan logging based on environment
+const morganFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
+app.use(morgan(morganFormat));
 
 // Configure session middleware (required for Passport)
 app.use(session({
@@ -87,6 +104,20 @@ app.use('/api/payments', require('./routes/payments'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin/orders', require('./routes/adminOrders'));
 app.use('/api/admin/dashboard', require('./routes/adminDashboard'));
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Error:', err.message);
+  res.status(err.status || 500).json({
+    message: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ message: 'Route not found' });
+});
 
 const PORT = process.env.PORT || 5000;
 

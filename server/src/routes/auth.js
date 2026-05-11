@@ -165,9 +165,6 @@ router.post('/verify-google-token', async (req, res) => {
       return res.status(400).json({ message: 'Token is required' });
     }
 
-    console.log('Verifying Google token...');
-    console.log('Client ID:', process.env.GOOGLE_CLIENT_ID);
-
     // Verify the token using Google's official library
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
@@ -175,7 +172,6 @@ router.post('/verify-google-token', async (req, res) => {
     });
 
     const payload = ticket.getPayload();
-    console.log('Token verified. Email:', payload.email);
 
     // Extract user info from token
     const { email, name, picture } = payload;
@@ -190,7 +186,6 @@ router.post('/verify-google-token', async (req, res) => {
     });
 
     if (!user) {
-      console.log('Creating new user:', email);
       // Create new user from Google profile
       user = await prisma.user.create({
         data: {
@@ -210,8 +205,6 @@ router.post('/verify-google-token', async (req, res) => {
           isVerified: true
         }
       });
-    } else {
-      console.log('User already exists:', email);
     }
 
     // Create JWT token

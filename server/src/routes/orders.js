@@ -8,19 +8,6 @@ const router = express.Router();
 // USER ONLY: Create an order
 router.post('/', verifyToken, verifyUser, async (req, res) => {
   try {
-    console.log('');
-    console.log('╔════════════════════════════════════════╗');
-    console.log('║     ORDER CREATION REQUEST RECEIVED    ║');
-    console.log('╚════════════════════════════════════════╝');
-    console.log('Authenticated user:', {
-      id: req.user?.id,
-      email: req.user?.email,
-      role: req.user?.role
-    });
-    console.log('Request headers:', req.headers);
-    console.log('Request body:', req.body);
-    console.log('');
-    
     const { items, deliveryDetails, totalAmount, paymentMethod, paymentStatus } = req.body;
     
     if (!Array.isArray(items) || items.length === 0) {
