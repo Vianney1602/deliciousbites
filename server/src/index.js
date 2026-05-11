@@ -24,8 +24,13 @@ const server = http.createServer(app);
 attachWebSocketServer(server);
 
 app.use(cors({
-  origin: '*', // Temporarily allow all origins to test
-  credentials: false
+  origin: function(origin, callback) {
+    // Always allow - for testing
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 app.use(morgan('dev'));
