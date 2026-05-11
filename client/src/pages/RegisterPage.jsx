@@ -217,7 +217,8 @@ const RegisterPage = () => {
 
         // Fetch the correct Client ID from backend
         console.log('📡 Fetching Client ID from backend...');
-        const response = await fetch('http://localhost:5000/api/auth/google-client-id');
+        const backendUrl = import.meta.env.VITE_API_URL || 'https://deliciousbites.onrender.com/api';
+        const response = await fetch(`${backendUrl}/auth/google-client-id`);
         if (!response.ok) {
           throw new Error(`Failed to fetch Client ID: ${response.status}`);
         }
