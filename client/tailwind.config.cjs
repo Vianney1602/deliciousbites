@@ -6,6 +6,7 @@ module.exports = {
       colors: {
         bakeryPink: '#ffe5ec',
         bakerySoftPink: '#fff5f8',
+        bakeryMidPink: '#ed859d',
         bakeryPrimary: '#ff6f91',
         bakeryBrown: '#5C4033',
         bakeryCream: '#fff8f2',
